@@ -15,8 +15,6 @@ let recordingStream = null;
 async function autoRecordMeeting(meetingLink, username) {
     try {
         browser = await launch(puppeteer, {
-            executablePath:
-                'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', // Replace with the actual path
             args: [
                 `--headless=new`,  // Enable the new headless mode (Chrome v109)
             ],

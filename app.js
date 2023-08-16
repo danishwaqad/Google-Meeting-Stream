@@ -14,16 +14,17 @@ let recordingStream = null;
 
 async function autoRecordMeeting(meetingLink, username) {
     try {
-        browser = await launch(puppeteer,{
-            headless: false,
-            defaultViewport: {
-                width: 1920,
-                height: 1080,
-            },
+        browser = await launch(puppeteer, {
+            executablePath:
+                'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', // Replace with the actual path
+            args: [
+                `--headless=new`,  // Enable the new headless mode (Chrome v109)
+            ],
             plugins: [StealthPlugin()],
         });
 
         const page = await browser.newPage();
+
         await page.goto(meetingLink);
 
         await page.waitForSelector('[placeholder="Your name"]');

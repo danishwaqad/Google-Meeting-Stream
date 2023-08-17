@@ -17,6 +17,8 @@ async function autoRecordMeeting(meetingLink, username) {
         browser = await launch(puppeteer, {
             args: [
                 `--headless=new`,  // Enable the new headless mode (Chrome v109)
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
             ],
             plugins: [StealthPlugin()],
         });

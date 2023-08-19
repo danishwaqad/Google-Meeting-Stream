@@ -15,10 +15,6 @@ let recordingStream = null;
 async function autoRecordMeeting(meetingLink, username) {
     try {
         browser = await launch(puppeteer, {
-            defaultViewport: {
-                width: 1920,
-                height: 1080,
-            },
             args: [
                 `--headless=new`,  // Enable the new headless mode (Chrome v109)
                 '--no-sandbox',

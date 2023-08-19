@@ -15,6 +15,10 @@ let recordingStream = null;
 async function autoRecordMeeting(meetingLink, username) {
     try {
         browser = await launch(puppeteer, {
+            defaultViewport: {
+                width: 1920,
+                height: 1080,
+            },
             args: [
                 `--headless=new`,  // Enable the new headless mode (Chrome v109)
                 '--no-sandbox',
@@ -29,7 +33,41 @@ async function autoRecordMeeting(meetingLink, username) {
 
         await page.waitForSelector('[placeholder="Your name"]');
         await page.type('[placeholder="Your name"]', username);
-        await page.keyboard.press('Enter');
+        // await page.keyboard.press('Enter');
+
+        // Define a custom function to find the button by its text
+        const findButtonByText = async (text) => {
+            const buttons = await page.$$('button');
+            for (const button of buttons) {
+                const buttonText = await button.evaluate(
+                    (element) => element.textContent,
+                );
+                if (buttonText.includes(text)) {
+                    return button;
+                }
+            }
+            return null;
+        };
+
+        const askToJoinButton = await findButtonByText('Ask to join');
+        if (askToJoinButton) {
+            await askToJoinButton.click();
+        } else {
+            console.log('Button not found');
+        }
+
+        // Wait for the meeting to load (you can increase the delay if needed)
+        await page.waitForTimeout(10000);
+        //
+        // // Check if the meeting URL is still the same
+        // const currentURL = page.url();
+
+        const GotitButton = await findButtonByText('Got it');
+        if (GotitButton) {
+            await GotitButton.click();
+        } else {
+            console.log('Button not found');
+        }
 
         await page.waitForTimeout(5000);
 
@@ -51,7 +89,6 @@ async function autoRecordMeeting(meetingLink, username) {
         console.error('An error occurred:', error);
     }
 }
-
 app.post('/start-recording', async (req, res) => {
     const { meetingLink, username } = req.body;
 

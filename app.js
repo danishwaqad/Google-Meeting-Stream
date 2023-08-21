@@ -60,7 +60,7 @@ async function startRecording(meetingLink, username) {
         }
 
         // Wait for the meeting to load (you can increase the delay if needed)
-        await page.waitForTimeout(10000);
+        await page.waitForTimeout(5000);
 
         // // Check if the meeting URL is still the same
         // const currentURL = page.url();

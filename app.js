@@ -11,21 +11,24 @@ let browserInstance = null;
 puppeteer.use(StealthPlugin());
 
 const recordings = {}; // Object to store ongoing recordings
-
+const ongoingRecordings = {}; // Object to store ongoing recording information for each meeting ID
 function extractMeetingIdFromLink(link) {
     const parts = link.split('/');
     return parts[parts.length - 1];
 }
-
 async function startRecording(meetingLink, username) {
     try {
         const meetingId = extractMeetingIdFromLink(meetingLink);
 
+        if (ongoingRecordings[meetingId]) {
+            console.log(`Recording is already in progress for meeting ID ${meetingId}.`);
+            return;
+        }
+
         if (!browserInstance) {
             browserInstance = await launch(puppeteer, {
-                //headless: false, // Show the browser window
                 args: [
-                    `--headless=new`,
+                    '--headless=new',
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
                 ],
@@ -51,7 +54,6 @@ async function startRecording(meetingLink, username) {
             }
             return null;
         };
-
         const askToJoinButton = await findButtonByText('Ask to join');
         if (askToJoinButton) {
             await askToJoinButton.click();
@@ -60,7 +62,7 @@ async function startRecording(meetingLink, username) {
         }
 
         // Wait for the meeting to load (you can increase the delay if needed)
-        await page.waitForTimeout(5000);
+        await page.waitForTimeout(15000);
 
         // // Check if the meeting URL is still the same
         // const currentURL = page.url();
@@ -72,7 +74,8 @@ async function startRecording(meetingLink, username) {
             console.log('Button not found');
         }
 
-        await page.waitForTimeout(5000);
+        // await page.waitForTimeout(5000);
+
 
         const recordingStream = await getStream(page, { audio: true, video: true });
         console.log(`Recording started for meeting ID: ${meetingId}.`);
@@ -81,8 +84,7 @@ async function startRecording(meetingLink, username) {
         const fileStream = fs.createWriteStream(filePath);
         recordingStream.pipe(fileStream);
 
-        // Store recording information
-        recordings[meetingId] = {
+        ongoingRecordings[meetingId] = {
             page,
             recordingStream,
             fileStream,
@@ -90,9 +92,9 @@ async function startRecording(meetingLink, username) {
 
         fileStream.on('finish', () => {
             console.log(`Recording for meeting ID ${meetingId} finished.`);
-            const recordingInfo = recordings[meetingId];
-            recordingInfo.browser.close();
-            delete recordings[meetingId];
+            const recordingInfo = ongoingRecordings[meetingId];
+            recordingInfo.page.close();
+            delete ongoingRecordings[meetingId];
         });
 
     } catch (error) {
@@ -126,11 +128,11 @@ app.post('/stop-recording', async (req, res) => {
 
     const meetingId = extractMeetingIdFromLink(meetingLink);
 
-    if (!recordings[meetingId]) {
+    if (!ongoingRecordings[meetingId]) {
         return res.status(400).json({ error: `No active recording for meeting ID ${meetingId}.` });
     }
 
-    const recordingInfo = recordings[meetingId];
+    const recordingInfo = ongoingRecordings[meetingId];
 
     const { page, recordingStream } = recordingInfo;
 
@@ -145,9 +147,9 @@ app.post('/stop-recording', async (req, res) => {
 
         console.log(`Recording stopped for meeting ID ${meetingId}.`);
 
-        delete recordings[meetingId];
+        delete ongoingRecordings[meetingId];
 
-        if (Object.keys(recordings).length === 0) {
+        if (Object.keys(ongoingRecordings).length === 0) {
             await browserInstance.close(); // Close the browser if no ongoing recordings
             browserInstance = null;
         }

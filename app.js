@@ -33,8 +33,8 @@ async function startRecording(meetingLink, username) {
                     '--disable-setuid-sandbox',
                 ],
                 defaultViewport: {
-                    width: 1920,
-                    height: 1080,
+                    width: 1024,
+                    height: 720,
                 },
                 plugins: [StealthPlugin()],
             });

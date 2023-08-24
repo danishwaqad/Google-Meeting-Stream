@@ -7,15 +7,14 @@ const fs = require('fs');
 const app = express();
 app.use(express.json());
 let browserInstance = null;
-
 puppeteer.use(StealthPlugin());
-
-const recordings = {}; // Object to store ongoing recordings
 const ongoingRecordings = {}; // Object to store ongoing recording information for each meeting ID
+
 function extractMeetingIdFromLink(link) {
     const parts = link.split('/');
     return parts[parts.length - 1];
 }
+
 async function startRecording(meetingLink, username) {
     try {
         const meetingId = extractMeetingIdFromLink(meetingLink);
@@ -27,11 +26,16 @@ async function startRecording(meetingLink, username) {
 
         if (!browserInstance) {
             browserInstance = await launch(puppeteer, {
+                //headless: false,
                 args: [
                     '--headless=new',
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
                 ],
+                defaultViewport: {
+                    width: 1920,
+                    height: 1080,
+                },
                 plugins: [StealthPlugin()],
             });
         }
@@ -61,21 +65,33 @@ async function startRecording(meetingLink, username) {
             console.log('Button not found');
         }
 
-        // Wait for the meeting to load (you can increase the delay if needed)
-        await page.waitForTimeout(15000);
+        await page.waitForTimeout(10000);
 
-        // // Check if the meeting URL is still the same
-        // const currentURL = page.url();
+        try {
+            // Wait for the element with class "uGOf1d" to appear
+            await page.waitForSelector('.uGOf1d');
 
-        const GotitButton = await findButtonByText('Got it');
-        if (GotitButton) {
-            await GotitButton.click();
-        } else {
-            console.log('Button not found');
+            // Find and extract the text content of the element with class "uGOf1d"
+            const elementParticipant = await page.$eval('.uGOf1d', element => element.textContent);
+
+            // Convert the element content to a number
+            const elementValue = parseInt(elementParticipant, 10);
+            if (elementValue > 0) {
+                console.log(`Meeting joined successfully. ${meetingId}`); // Success message along with element content
+                await page.waitForTimeout(5000);
+
+                let gotItButton = await findButtonByText('Got it');
+                if (gotItButton) {
+                    await gotItButton.click();
+                } else {
+                    console.log('Button not found');
+                }
+            } else {
+                console.log('Meeting participant element found, but value is not greater than 0.');
+            }
+        } catch (error) {
+            console.error(`An error occurred:`, error);
         }
-
-        // await page.waitForTimeout(5000);
-
 
         const recordingStream = await getStream(page, { audio: true, video: true });
         console.log(`Recording started for meeting ID: ${meetingId}.`);
@@ -97,6 +113,37 @@ async function startRecording(meetingLink, username) {
             delete ongoingRecordings[meetingId];
         });
 
+        await startValueCheckingInterval(meetingId, page);
+
+        async function startValueCheckingInterval(meetingId, page) {
+            const intervalId = setInterval(async () => {
+                try {
+                    const elementStop = await page.waitForSelector('.uGOf1d');
+                    const elementParticipant = await elementStop.evaluate(element => element.textContent);
+                    const elementValue = parseInt(elementParticipant, 10);
+                    await checkElementValueAndStopRecording(elementValue, meetingId);
+                } catch (error) {
+                    console.error(`An error occurred while checking element value:`, error);
+                }
+            }, 10000);
+            ongoingRecordings[meetingId].intervalId = intervalId; // Store the interval ID in the ongoingRecordings object
+        }
+
+        async function checkElementValueAndStopRecording(elementValue, meetingId) {
+            if (elementValue === 1) {
+                const response = await fetch('http://localhost:5001/stop-recording', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ meetingLink: meetingLink })
+                });
+
+                const data = await response.json();
+                console.log(data.message);
+            }
+        }
+
     } catch (error) {
         console.error(`An error occurred:`, error);
     }
@@ -111,7 +158,7 @@ app.post('/start-recording', async (req, res) => {
 
     const meetingId = extractMeetingIdFromLink(meetingLink);
 
-    if (recordings[meetingId]) {
+    if (ongoingRecordings[meetingId]) {
         return res.status(400).json({ error: `Recording is already in progress for meeting ID ${meetingId}.` });
     }
 
@@ -134,23 +181,22 @@ app.post('/stop-recording', async (req, res) => {
 
     const recordingInfo = ongoingRecordings[meetingId];
 
-    const { page, recordingStream } = recordingInfo;
+    const { page, recordingStream, intervalId } = recordingInfo;
 
     try {
         recordingStream.destroy();
+        clearInterval(intervalId); // Cancel the interval associated with the meeting
 
         await new Promise(resolve => {
             recordingStream.on('close', resolve);
         });
 
-        await page.close(); // Close the tab
-
-        console.log(`Recording stopped for meeting ID ${meetingId}.`);
+        await page.close();
 
         delete ongoingRecordings[meetingId];
 
-        if (Object.keys(ongoingRecordings).length === 0) {
-            await browserInstance.close(); // Close the browser if no ongoing recordings
+        if (Object.keys(ongoingRecordings).length === 0 && browserInstance) {
+            await browserInstance.close();
             browserInstance = null;
         }
 
